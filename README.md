@@ -1,0 +1,2 @@
+# AICLASS
+AI課程專用

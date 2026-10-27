@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班級線上訂便當系統</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text: #0f172a;
+            --border: #cbd5e1;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 10px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+        .container { max-width: 900px; width: 100%; }
+
+        /* 頂部標題與頁籤組合 */
+        .header-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 10px; }
+        .header-box h1 { font-size: 1.25rem; white-space: nowrap; }
+        .tabs { display: flex; gap: 6px; flex: 1; max-width: 320px; }
+        .tab-btn { flex: 1; padding: 8px 12px; background: #e2e8f0; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9rem; transition: 0.2s; }
+        .tab-btn.active { background: var(--primary); color: white; }
+
+        .card { background: var(--card-bg); border-radius: 10px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 表單列 */
+        .form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .form-row label { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+        .form-row input[type="text"], .form-row select { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; background: #fff; }
+
+        /* 菜單網格：兩欄緊湊式 */
+        .menu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding-right: 2px; }
+        .menu-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.85rem; background: #fff; }
+        .menu-item.selected { border-color: var(--primary); background-color: #eff6ff; font-weight: bold; }
+        .menu-price { color: #d97706; font-weight: bold; white-space: nowrap; margin-left: 4px; }
+
+        /* 今日主打標籤 (藍色文字) */
+        .today-highlight { color: #2563eb; font-weight: bold; }
+
+        /* 素食細項：緊湊橫排 */
+        .option-box { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 10px; border-radius: 6px; margin-top: 6px; display: none; font-size: 0.85rem; }
+        .option-box.active { display: block; }
+        .option-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+        .option-group { display: flex; gap: 8px; align-items: center; }
+
+        /* 底部結帳欄 */
+        .checkout-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+        .qty-box { display: flex; align-items: center; gap: 6px; }
+        .qty-btn { width: 28px; height: 28px; border: 1px solid var(--border); background: #fff; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .total-price { font-size: 1.1rem; font-weight: bold; color: #d97706; }
+        .submit-btn { background: var(--primary); color: white; padding: 8px 20px; border: none; border-radius: 6px; font-size: 0.95rem; font-weight: bold; cursor: pointer; }
+
+        /* 查看訂單表格區域 */
+        .summary-card { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; color: #166534; font-size: 0.85rem; }
+        .item-stats-box { background: #fff7ed; border: 1px solid #ffedd5; padding: 8px; border-radius: 6px; margin-bottom: 10px; }
+        .item-stats-box h4 { color: #9a3412; font-size: 0.85rem; margin-bottom: 4px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th, td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: center; }
+        th { background: #f1f5f9; }
+
+        .category-header-row { background-color: #fef3c7; color: #92400e; font-weight: bold; text-align: left; }
+        .subtotal-row { background-color: #fffbe3; font-weight: bold; }
+        .stats-total-row { background-color: #ffedd5; font-weight: bold; border-top: 1.5px solid #fdba74; }
+
+        /* 付款按鈕 */
+        .pay-btn { padding: 3px 8px; border: none; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; }
+        .pay-btn.unpaid { background-color: #dc2626; color: #ffffff; }
+        .pay-btn.paid { background-color: #16a34a; color: #ffffff; cursor: default; }
+
+        .table-wrapper { width: 100%; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- 頂部標題與頁籤組合 -->
+    <div class="header-box">
+        <h1>🍱 班級線上訂便當</h1>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('order')">我要訂餐</button>
+            <button class="tab-btn" onclick="switchTab('list')">查看訂單 📋</button>
+        </div>
+    </div>
+
+    <!-- 頁籤一：我要訂餐 -->
+    <div id="orderTab" class="tab-content card active">
+        <form id="orderForm">
+            <!-- 廠商下拉選單 -->
+            <div class="form-row">
+                <label for="vendorSelect">選擇店家：</label>
+                <select id="vendorSelect" onchange="renderMenu()">
+                    <option value="A">🌱 廠商 A（素食專區）</option>
+                    <option value="B">🍱 廠商 B（經典便當系列）</option>
+                    <option value="C">🍱 廠商 C（特色弁當系列）</option>
+                    <option value="D">📅 廠商 D（金御咖哩~10月限定特價）</option>
+                    <option value="E" selected>🍱 廠商 E（御上皇經濟便當）</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="name">訂購人姓名：</label>
+                <input type="text" id="name" placeholder="請輸入姓名" required>
+            </div>
+
+            <div class="menu-grid" id="menuContainer"></div>
+
+            <!-- 素食便當細項選擇 -->
+            <div class="option-box" id="vegeOptionBox">
+                <div style="font-weight: bold; color: #166534;">🌱 素食細項設定：</div>
+                
+                <!-- 加蛋選項（和平素食、明緣素食顯示，不加價） -->
+                <div class="option-row" id="eggOptionRow" style="display:none;">
+                    <span>加蛋選擇：</span>
+                    <div class="option-group">
+                        <label><input type="radio" name="eggOption" value="不加蛋" checked onchange="calculateTotal()"> 不加蛋</label>
+                        <label><input type="radio" name="eggOption" value="加蛋" onchange="calculateTotal()"> 加蛋</label>
+                    </div>
+                </div>
+
+                <div class="option-row">
+                    <span>飯量：</span>
+                    <div class="option-group">
+                        <label><input type="radio" name="riceAmount" value="正常" checked> 正常</label>
+                        <label><input type="radio" name="riceAmount" value="半飯"> 半飯</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部結帳與送出區塊 -->
+            <div class="checkout-bar">
+                <div class="qty-box">
+                    <span>數量：</span>
+                    <button type="button" class="qty-btn" onclick="updateQty(-1)">-</button>
+                    <span id="qtyVal" style="font-weight: bold; padding: 0 4px;">1</span>
+                    <button type="button" class="qty-btn" onclick="updateQty(1)">+</button>
+                </div>
+                <div>
+                    <span>金額：</span>
+                    <span class="total-price" id="totalAmount">$0</span>
+                </div>
+                <button type="submit" class="submit-btn" id="submitBtn">送出訂單</button>
+            </div>
+            <div style="text-align:center; margin-top:4px; font-weight:bold; font-size:0.85rem;" id="statusMsg"></div>
+        </form>
+    </div>
+
+    <!-- 頁籤二：查看訂單清單 -->
+    <div id="listTab" class="tab-content card">
+        <div class="summary-card" id="summaryStats">
+            正在載入統計資料...
+            <button onclick="loadOrders()" style="float: right; padding: 2px 6px; cursor: pointer; font-size: 0.75rem;">🔄 重新整理</button>
+        </div>
+
+        <!-- 報餐統計區 -->
+        <div class="item-stats-box">
+            <h4>📢 今日店家報餐統計</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">便當品項</th>
+                        <th style="width: 80px;">總數量</th>
+                        <th style="width: 100px;">小計金額</th>
+                    </tr>
+                </thead>
+                <tbody id="itemStatsTableBody">
+                    <tr><td colspan="3">尚無統計資料</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 明細列表 -->
+        <h4 style="font-size: 0.85rem; margin-bottom: 4px;">👤 個人訂購明細表</h4>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 90px;">民國序號</th>
+                        <th>時間</th>
+                        <th>姓名</th>
+                        <th style="text-align: left;">便當品項 (含註記)</th>
+                        <th>數量</th>
+                        <th>金額</th>
+                        <th style="width: 80px;">付款</th>
+                    </tr>
+                </thead>
+                <tbody id="orderTableBody">
+                    <tr><td colspan="7">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbwvznQ855PvLdxNTHMs6MO4eaEpV7fZZT9aY421DDri_lhtyWAMkHkwePyozVO0C5xE/exec";
+
+    // 依據字首 A, B, C, D, E 分類的菜單資料
+    const allMenuItems = [
+        // 廠商 A（素食選項）
+        { vendor: "A", name: "A佳岱素食-白飯", price: 70, isVege: true, allowEgg: false },
+        { vendor: "A", name: "A佳岱素食-五穀飯", price: 75, isVege: true, allowEgg: false },
+        { vendor: "A", name: "A和平素食-白飯", price: 70, isVege: true, allowEgg: true },
+        { vendor: "A", name: "A和平素食-五穀飯", price: 70, isVege: true, allowEgg: true },
+        { vendor: "A", name: "A明緣素食-白飯", price: 70, isVege: true, allowEgg: true },
+        { vendor: "A", name: "A明緣素食-胚芽飯", price: 70, isVege: true, allowEgg: true },
+        { vendor: "A", name: "A明緣素食-炒飯", price: 70, isVege: true, allowEgg: true },
+
+        // 廠商 B（經典便當系列）
+        { vendor: "B", name: "B無刺虱目魚肚便當", price: 110 },
+        { vendor: "B", name: "B三杯雞便當", price: 70 },
+        { vendor: "B", name: "B玫瑰魯腿便當", price: 90 },
+        { vendor: "B", name: "B控肉便當", price: 70 },
+        { vendor: "B", name: "B椒鹽炸腿便當", price: 90 },
+        { vendor: "B", name: "B宮保雞丁便當", price: 70 },
+        { vendor: "B", name: "B豬腳便當", price: 80 },
+        { vendor: "B", name: "B秘製燒肉便當", price: 70 },
+        { vendor: "B", name: "B香煎肉魚便當", price: 80 },
+        { vendor: "B", name: "B酥炸排骨便當", price: 70 },
+        { vendor: "B", name: "B香煎虱目魚便當", price: 80 },
+        { vendor: "B", name: "B手切魯肉便當", price: 70 },
+        { vendor: "B", name: "B酥炸魚柳便當", price: 70 },
+
+        // 廠商 C（弁當系列）
+        { vendor: "C", name: "C壽喜燒肉弁當", price: 80 },
+        { vendor: "C", name: "C塔香燒肉弁當", price: 85 },
+        { vendor: "C", name: "C泡菜燒肉弁當", price: 90 },
+        { vendor: "C", name: "C壽喜牛弁當", price: 95 },
+        { vendor: "C", name: "C塔香牛肉弁當", price: 95 },
+        { vendor: "C", name: "C泰式打拋豬肉弁當 (小辣)", price: 100 },
+        { vendor: "C", name: "C泡菜牛肉弁當", price: 100 },
+        { vendor: "C", name: "C菜飯-壽喜醬洋蔥炒蛋", price: 80 },
+
+        // 廠商 D（金御咖哩 - 星期一至五）
+        { vendor: "D", name: "D菲力雞排飯 10/5.12.19.26(一)", price: 75 },
+        { vendor: "D", name: "D日式豬排飯 10/5.12.19.26(一)", price: 80 },
+        { vendor: "D", name: "D水晶魚排飯 10/6.13.20.27(二)", price: 75 },
+        { vendor: "D", name: "D筍干燒肉飯 10/6.13.20.27(二)", price: 80 },
+        { vendor: "D", name: "D黃金里肌豬排飯 10/7.14.21.28(三)", price: 75 },
+        { vendor: "D", name: "D蝦仁排佐咖哩飯 10/7.14.21.28(三)", price: 75 },
+        { vendor: "D", name: "D香酥腿排飯 10/1.8.15.22.29(四)", price: 75 },
+        { vendor: "D", name: "D起士豬排飯 10/1.8.15.22.29(四)", price: 80 },
+        { vendor: "D", name: "D古早味排骨飯 10/2.9.16.23.30(五)", price: 75 },
+        { vendor: "D", name: "D咕咕雞丁飯 10/2.9.16.23.30(五)", price: 80 },
+
+        // 廠商 E（御上皇經濟便當）
+        { vendor: "E", name: "E酥炸大雞腿", price: 90 },
+        { vendor: "E", name: "E特製碳烤雞腿", price: 90 },
+        { vendor: "E", name: "E左宗棠燒雞", price: 80 },
+        { vendor: "E", name: "E古早味三杯雞", price: 80 },
+        { vendor: "E", name: "E泰式椒麻雞", price: 85 },
+        { vendor: "E", name: "E煙燻雞腿排", price: 80 },
+        { vendor: "E", name: "E無骨雞排", price: 80 },
+        { vendor: "E", name: "E酥炸大雞排", price: 80 },
+        { vendor: "E", name: "E蔥爆鐵板豬柳", price: 80 },
+        { vendor: "E", name: "E帶骨豬排", price: 80 },
+        { vendor: "E", name: "E韓式泡菜燒肉", price: 80 },
+        { vendor: "E", name: "E日式炸豬排", price: 80 },
+        { vendor: "E", name: "E糖醋咕咾肉", price: 80 },
+        { vendor: "E", name: "E懷舊排骨", price: 80 },
+        { vendor: "E", name: "E港式香腸飯", price: 80 },
+        { vendor: "E", name: "E香醋鱈魚", price: 80 },
+        { vendor: "E", name: "E酥炸鯖魚", price: 80 }
+    ];
+
+    let selectedItem = null;
+    let quantity = 1;
+
+    function renderMenu() {
+        const vendorKey = document.getElementById('vendorSelect').value;
+        const filteredMenu = allMenuItems.filter(item => item.vendor === vendorKey);
+        const menuContainer = document.getElementById('menuContainer');
+        
+        menuContainer.innerHTML = '';
+        selectedItem = null;
+        calculateTotal();
+        document.getElementById('vegeOptionBox').classList.remove('active');
+        document.getElementById('eggOptionRow').style.display = 'none';
+
+        const dayOfWeek = new Date().getDay();
+        const daysMap = ['(日)', '(一)', '(二)', '(三)', '(四)', '(五)', '(六)'];
+        const todayTag = daysMap[dayOfWeek];
+
+        filteredMenu.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'menu-item';
+            div.onclick = () => {
+                selectedItem = item;
+                document.querySelectorAll('.menu-item').forEach((el, i) => {
+                    el.classList.toggle('selected', i === index);
+                });
+                
+                const vegeBox = document.getElementById('vegeOptionBox');
+                const eggRow = document.getElementById('eggOptionRow');
+
+                if (item.isVege) {
+                    vegeBox.classList.add('active');
+                    if (item.allowEgg) {
+                        eggRow.style.display = 'flex';
+                    } else {
+                        eggRow.style.display = 'none';
+                        const defaultNoEgg = document.querySelector('input[name="eggOption"][value="不加蛋"]');
+                        if (defaultNoEgg) defaultNoEgg.checked = true;
+                    }
+                } else {
+                    vegeBox.classList.remove('active');
+                    eggRow.style.display = 'none';
+                }
+
+                calculateTotal();
+            };
+
+            let displayName = item.name.replace(/^[A-Z]/, '');
+            const isTodayMenu = vendorKey === 'D' && item.name.includes(todayTag);
+            const titleStyle = isTodayMenu ? 'class="today-highlight"' : '';
+
+            div.innerHTML = `<span ${titleStyle}>${displayName}</span><span class="menu-price">$${item.price}</span>`;
+            menuContainer.appendChild(div);
+        });
+    }
+
+    renderMenu();
+
+    function updateQty(delta) {
+        if (quantity + delta >= 1) {
+            quantity += delta;
+            document.getElementById('qtyVal').innerText = quantity;
+            calculateTotal();
+        }
+    }
+
+    function calculateTotal() {
+        if (!selectedItem) {
+            document.getElementById('totalAmount').innerText = `$0`;
+            return;
+        }
+
+        let unitPrice = selectedItem.price; 
+        const total = unitPrice * quantity;
+        document.getElementById('totalAmount').innerText = `$${total}`;
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', (tab === 'order' && i === 0) || (tab === 'list' && i === 1)));
+        document.getElementById('orderTab').classList.toggle('active', tab === 'order');
+        document.getElementById('listTab').classList.toggle('active', tab === 'list');
+
+        if (tab === 'list') {
+            loadOrders();
+        }
+    }
+
+    async function loadOrders() {
+        const tbody = document.getElementById('orderTableBody');
+        const itemTbody = document.getElementById('itemStatsTableBody');
+        const stats = document.getElementById('summaryStats');
+        
+        tbody.innerHTML = '<tr><td colspan="7">載入中...</td></tr>';
+        itemTbody.innerHTML = '<tr><td colspan="3">統計中...</td></tr>';
+
+        try {
+            const res = await fetch(API_URL);
+            const orders = await res.json();
+
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7">目前尚無人訂購</td></tr>';
+                itemTbody.innerHTML = '<tr><td colspan="3">尚無當日品項統計</td></tr>';
+                stats.innerHTML = '當日訂購份數：0 份 | 當日總金額：$0 <button onclick="loadOrders()" style="float: right; padding: 2px 6px; cursor: pointer; font-size: 0.75rem;">🔄 重新整理</button>';
+                return;
+            }
+
+            let dateCounter = {};
+            orders.forEach(order => {
+                let dateKey = order.dateOnly.replace(/-/g, '');
+                if (!dateCounter[dateKey]) dateCounter[dateKey] = 0;
+                dateCounter[dateKey]++;
+                let seq = String(dateCounter[dateKey]).padStart(2, '0');
+                order.serialNo = `${dateKey}-${seq}`;
+            });
+
+            let todayOrdersCount = 0;
+            let vegeSummary = {};
+            let meatSummary = {};
+
+            tbody.innerHTML = '';
+            const reversedOrders = [...orders].reverse();
+
+            reversedOrders.forEach((order) => {
+                const qty = Number(order.quantity);
+                const tot = Number(order.total);
+
+                if (order.isToday) {
+                    todayOrdersCount++;
+
+                    if (order.bento.includes("素食便當") || order.bento.includes("素食")) {
+                        if (!vegeSummary[order.bento]) vegeSummary[order.bento] = { qty: 0, total: 0 };
+                        vegeSummary[order.bento].qty += qty;
+                        vegeSummary[order.bento].total += tot;
+                    } else {
+                        if (!meatSummary[order.bento]) meatSummary[order.bento] = { qty: 0, total: 0 };
+                        meatSummary[order.bento].qty += qty;
+                        meatSummary[order.bento].total += tot;
+                    }
+                }
+
+                const tr = document.createElement('tr');
+                if (!order.isToday) {
+                    tr.style.backgroundColor = "#f8fafc";
+                    tr.style.color = "#64748b";
+                }
+
+                let buttonHtml = order.isPaid 
+                    ? `<button class="pay-btn paid">已付款 ✓</button>`
+                    : `<button class="pay-btn unpaid" onclick="togglePay(this, '${order.name}', ${order.total}, ${order.rowId})">未付款</button>`;
+
+                tr.innerHTML = `
+                    <td><b>${order.serialNo}</b></td>
+                    <td>${order.timestamp}</td>
+                    <td><b>${order.name}</b> ${order.isToday ? '<span style="color:#16a34a; font-size:0.7rem;">(今日)</span>' : ''}</td>
+                    <td style="text-align:left;">${order.bento}</td>
+                    <td>${order.quantity}</td>
+                    <td>$${order.total}</td>
+                    <td>${buttonHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            itemTbody.innerHTML = '';
+            let totalVegeQty = 0, totalVegePrice = 0;
+            let totalMeatQty = 0, totalMeatPrice = 0;
+
+            if (Object.keys(vegeSummary).length === 0 && Object.keys(meatSummary).length === 0) {
+                itemTbody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8;">今日尚無訂購紀錄</td></tr>';
+            } else {
+                if (Object.keys(vegeSummary).length > 0) {
+                    const hTr = document.createElement('tr');
+                    hTr.className = 'category-header-row';
+                    hTr.innerHTML = `<td colspan="3">🌱 素食區塊統計</td>`;
+                    itemTbody.appendChild(hTr);
+
+                    for (const [bentoName, data] of Object.entries(vegeSummary)) {
+                        totalVegeQty += data.qty;
+                        totalVegePrice += data.total;
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="text-align:left; padding-left: 12px;">${bentoName}</td><td><b>${data.qty}</b> 份</td><td>$${data.total}</td>`;
+                        itemTbody.appendChild(tr);
+                    }
+
+                    const subTr = document.createElement('tr');
+                    subTr.className = 'subtotal-row';
+                    subTr.innerHTML = `<td style="text-align:left; color:#166534; padding-left: 12px;">🌱 素食小計</td><td><b>${totalVegeQty}</b> 份</td><td><b>$${totalVegePrice}</b></td>`;
+                    itemTbody.appendChild(subTr);
+                }
+
+                if (Object.keys(meatSummary).length > 0) {
+                    const hTr = document.createElement('tr');
+                    hTr.className = 'category-header-row';
+                    hTr.innerHTML = `<td colspan="3">🍗 葷食區塊統計</td>`;
+                    itemTbody.appendChild(hTr);
+
+                    for (const [bentoName, data] of Object.entries(meatSummary)) {
+                        totalMeatQty += data.qty;
+                        totalMeatPrice += data.total;
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="text-align:left; padding-left: 12px;">${bentoName}</td><td><b>${data.qty}</b> 份</td><td>$${data.total}</td>`;
+                        itemTbody.appendChild(tr);
+                    }
+
+                    const subTr = document.createElement('tr');
+                    subTr.className = 'subtotal-row';
+                    subTr.innerHTML = `<td style="text-align:left; color:#9a3412; padding-left: 12px;">🍗 葷食小計</td><td><b>${totalMeatQty}</b> 份</td><td><b>$${totalMeatPrice}</b></td>`;
+                    itemTbody.appendChild(subTr);
+                }
+
+                const grandTotalQty = totalVegeQty + totalMeatQty;
+                const grandTotalPrice = totalVegePrice + totalMeatPrice;
+
+                const totalTr = document.createElement('tr');
+                totalTr.className = 'stats-total-row';
+                totalTr.innerHTML = `<td style="text-align:left; color:#9a3412;">🍱 今日全部便當總計</td><td><b>${grandTotalQty}</b> 份</td><td><b>$${grandTotalPrice}</b></td>`;
+                itemTbody.appendChild(totalTr);
+
+                stats.innerHTML = `<b>📊 今日統計：</b>${todayOrdersCount} 筆訂單，共 <b>${grandTotalQty}</b> 個便當（素 ${totalVegeQty} / 葷 ${totalMeatQty}），金額 <b>$${grandTotalPrice}</b> 元 <button onclick="loadOrders()" style="float: right; padding: 2px 6px; cursor: pointer; font-size: 0.75rem;">🔄 重新整理</button>`;
+            }
+
+        } catch (err) {
+            console.error(err);
+            tbody.innerHTML = '<tr><td colspan="7" style="color:red;">載入失敗，請確認 Apps Script 設定！</td></tr>';
+        }
+    }
+
+    async function togglePay(btn, name, total, rowId) {
+        if (confirm(`確認【${name}】已付款 $${total} 元？`)) {
+            btn.innerText = '更新...';
+            btn.disabled = true;
+
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'updatePayment', rowId: rowId })
+                });
+
+                btn.classList.remove('unpaid');
+                btn.classList.add('paid');
+                btn.innerText = '已付款 ✓';
+                btn.onclick = null;
+                btn.disabled = false;
+            } catch (err) {
+                alert('更新失敗，請檢查網路連線');
+                btn.innerText = '未付款';
+                btn.disabled = false;
+            }
+        }
+    }
+
+    document.getElementById('orderForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!selectedItem) return alert('請先選擇便當！');
+
+        const name = document.getElementById('name').value.trim();
+        const submitBtn = document.getElementById('submitBtn');
+        const statusMsg = document.getElementById('statusMsg');
+
+        let currentUnitPrice = selectedItem.price;
+        let noteParts = [];
+
+        if (selectedItem.isVege) {
+            if (selectedItem.allowEgg) {
+                const eggOpt = document.querySelector('input[name="eggOption"]:checked').value;
+                noteParts.push(eggOpt);
+            }
+            const riceAmount = document.querySelector('input[name="riceAmount"]:checked').value;
+            noteParts.push(riceAmount);
+        }
+
+        let finalBentoName = selectedItem.name;
+        if (noteParts.length > 0) {
+            finalBentoName += ` [${noteParts.join('/')}]`;
+        }
+
+        const finalTotal = currentUnitPrice * quantity;
+
+        submitBtn.disabled = true;
+        statusMsg.style.color = '#2563eb';
+        statusMsg.innerText = '傳送中...';
+
+        const payload = {
+            name: name,
+            bento: finalBentoName,
+            price: currentUnitPrice,
+            quantity: quantity,
+            total: finalTotal
+        };
+
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            statusMsg.style.color = '#16a34a';
+            statusMsg.innerText = '🎉 訂購成功！';
+
+            setTimeout(() => {
+                document.getElementById('orderForm').reset();
+                document.getElementById('vegeOptionBox').classList.remove('active');
+                document.getElementById('eggOptionRow').style.display = 'none';
+                selectedItem = null;
+                quantity = 1;
+                document.getElementById('qtyVal').innerText = '1';
+                calculateTotal();
+                renderMenu();
+                statusMsg.innerText = '';
+                submitBtn.disabled = false;
+                switchTab('list');
+            }, 1200);
+
+        } catch (err) {
+            statusMsg.style.color = '#dc2626';
+            statusMsg.innerText = '❌ 送出失敗，請再試一次';
+            submitBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
